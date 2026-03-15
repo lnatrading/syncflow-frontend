@@ -1347,14 +1347,16 @@ async function loadMappings() {
   const supplierId = document.getElementById('mapping-supplier-select').value;
   if (!supplierId) return;
   try {
-    const [mappings, markups, shipping] = await Promise.all([
+    const [mappingsRes, markupsRes, shippingRes] = await Promise.allSettled([
       api('/api/mappings?supplier_id=' + supplierId),
       api('/api/mappings/markup?supplier_id=' + supplierId),
       api('/api/mappings/shipping?supplier_id=' + supplierId),
     ]);
-    renderMappingRows(mappings, supplierId);
-    renderMarkupRows(markups, supplierId);
-    renderShippingTiers(shipping, supplierId);
+    if (mappingsRes.status === 'fulfilled') renderMappingRows(mappingsRes.value, supplierId);
+    else toast('Field mappings error: ' + mappingsRes.reason?.message, 'error');
+    if (markupsRes.status === 'fulfilled') renderMarkupRows(markupsRes.value, supplierId);
+    if (shippingRes.status === 'fulfilled') renderShippingTiers(shippingRes.value, supplierId);
+    else console.warn('Shipping tiers error:', shippingRes.reason?.message);
   } catch (err) { toast('Error: ' + err.message, 'error'); }
 }
 
