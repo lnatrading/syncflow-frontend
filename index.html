@@ -340,6 +340,24 @@
           <div id="markup-container"><div class="loader">Select a supplier above</div></div>
           <button class="btn btn-ghost" style="margin-top:12px;" onclick="addMarkupRow()">+ Add Rule</button>
         </div>
+        <div class="form-card">
+          <div class="form-card-title">🚚 Shipping Cost Tiers</div>
+          <div style="font-size:12px;color:var(--muted2);margin-bottom:14px;">
+            Dimensions are auto-read from product specs. Units are normalised automatically (mm→cm, g→kg).
+            Billable weight = max(actual weight, volumetric weight). Tiers are checked in order — first match wins.
+          </div>
+          <div style="display:grid;grid-template-columns:90px 90px 90px 110px 90px 90px auto;gap:8px;align-items:center;margin-bottom:8px;">
+            <div style="font-size:11px;color:var(--muted2);font-weight:600;">Min kg</div>
+            <div style="font-size:11px;color:var(--muted2);font-weight:600;">Max kg</div>
+            <div style="font-size:11px;color:var(--muted2);font-weight:600;">Max vol.kg</div>
+            <div style="font-size:11px;color:var(--muted2);font-weight:600;">Max side (cm)</div>
+            <div style="font-size:11px;color:var(--muted2);font-weight:600;">Cost (€)</div>
+            <div style="font-size:11px;color:var(--muted2);font-weight:600;">Label</div>
+            <div></div>
+          </div>
+          <div id="shipping-container"><div style="font-size:13px;color:var(--muted2);padding:10px 0;">Select a supplier above</div></div>
+          <button class="btn btn-ghost" style="margin-top:12px;" onclick="addShippingTier()">+ Add Tier</button>
+        </div>
       </div>
 
       <!-- ATTRIBUTES -->
@@ -1322,12 +1340,14 @@ async function loadMappings() {
   const supplierId = document.getElementById('mapping-supplier-select').value;
   if (!supplierId) return;
   try {
-    const [mappings, markups] = await Promise.all([
+    const [mappings, markups, shipping] = await Promise.all([
       api('/api/mappings?supplier_id=' + supplierId),
       api('/api/mappings/markup?supplier_id=' + supplierId),
+      api('/api/mappings/shipping?supplier_id=' + supplierId),
     ]);
     renderMappingRows(mappings, supplierId);
     renderMarkupRows(markups, supplierId);
+    renderShippingTiers(shipping, supplierId);
   } catch (err) { toast('Error: ' + err.message, 'error'); }
 }
 
@@ -2758,6 +2778,94 @@ async function addMarkupRow() {
   } catch (err) { toast('Error: ' + err.message, 'error'); }
 }
 
+
+// ─── SHIPPING TIERS ───────────────────────────────────────
+
+function renderShippingTiers(tiers, supplierId) {
+  const container = document.getElementById('shipping-container');
+  if (!tiers || !tiers.length) {
+    container.innerHTML = '<div style="font-size:13px;color:var(--muted2);padding:10px 0;">No shipping tiers yet. Add one below.</div>';
+    return;
+  }
+  container.innerHTML = tiers.map(t => `
+    <div id="ship-${t.id}" style="display:grid;grid-template-columns:90px 90px 90px 110px 90px 90px auto;gap:8px;align-items:center;margin-bottom:8px;">
+      <input type="number" step="0.01" value="${t.min_weight_kg ?? ''}" placeholder="0"
+        style="font-family:'DM Mono',monospace;font-size:12px;"
+        onchange="updateShippingTier(${t.id},'min_weight_kg',this.value)">
+      <input type="number" step="0.01" value="${t.max_weight_kg ?? ''}" placeholder="∞"
+        style="font-family:'DM Mono',monospace;font-size:12px;"
+        onchange="updateShippingTier(${t.id},'max_weight_kg',this.value)">
+      <input type="number" step="0.01" value="${t.max_vol_weight ?? ''}" placeholder="∞"
+        style="font-family:'DM Mono',monospace;font-size:12px;"
+        onchange="updateShippingTier(${t.id},'max_vol_weight',this.value)">
+      <input type="number" step="0.1" value="${t.max_longest_side_cm ?? ''}" placeholder="∞"
+        style="font-family:'DM Mono',monospace;font-size:12px;"
+        onchange="updateShippingTier(${t.id},'max_longest_side_cm',this.value)">
+      <input type="number" step="0.01" value="${t.cost ?? 0}" placeholder="0.00"
+        style="font-family:'DM Mono',monospace;font-size:12px;font-weight:600;"
+        onchange="updateShippingTier(${t.id},'cost',this.value)">
+      <input type="text" value="${t.label ?? ''}" placeholder="e.g. Small parcel"
+        style="font-size:12px;"
+        onchange="updateShippingTier(${t.id},'label',this.value)">
+      <button class="btn btn-danger btn-sm" onclick="deleteShippingTier(${t.id})">✕</button>
+    </div>`).join('');
+}
+
+async function addShippingTier() {
+  const supplierId = document.getElementById('mapping-supplier-select').value;
+  if (!supplierId) { toast('Select a supplier first', 'error'); return; }
+  const tiers = document.getElementById('shipping-container').querySelectorAll('[id^="ship-"]');
+  try {
+    const t = await api('/api/mappings/shipping', { method: 'POST', body: {
+      supplier_id: parseInt(supplierId),
+      min_weight_kg: 0,
+      max_weight_kg: null,
+      max_vol_weight: null,
+      max_longest_side_cm: null,
+      cost: 0,
+      label: '',
+      sort_order: tiers.length,
+    }});
+    const container = document.getElementById('shipping-container');
+    if (container.querySelector('div[style*="No shipping tiers"]')) container.innerHTML = '';
+    container.insertAdjacentHTML('beforeend', `
+      <div id="ship-${t.id}" style="display:grid;grid-template-columns:90px 90px 90px 110px 90px 90px auto;gap:8px;align-items:center;margin-bottom:8px;">
+        <input type="number" step="0.01" value="0" placeholder="0"
+          style="font-family:'DM Mono',monospace;font-size:12px;"
+          onchange="updateShippingTier(${t.id},'min_weight_kg',this.value)">
+        <input type="number" step="0.01" value="" placeholder="∞"
+          style="font-family:'DM Mono',monospace;font-size:12px;"
+          onchange="updateShippingTier(${t.id},'max_weight_kg',this.value)">
+        <input type="number" step="0.01" value="" placeholder="∞"
+          style="font-family:'DM Mono',monospace;font-size:12px;"
+          onchange="updateShippingTier(${t.id},'max_vol_weight',this.value)">
+        <input type="number" step="0.1" value="" placeholder="∞"
+          style="font-family:'DM Mono',monospace;font-size:12px;"
+          onchange="updateShippingTier(${t.id},'max_longest_side_cm',this.value)">
+        <input type="number" step="0.01" value="0" placeholder="0.00"
+          style="font-family:'DM Mono',monospace;font-size:12px;font-weight:600;"
+          onchange="updateShippingTier(${t.id},'cost',this.value)">
+        <input type="text" value="" placeholder="e.g. Small parcel"
+          style="font-size:12px;"
+          onchange="updateShippingTier(${t.id},'label',this.value)">
+        <button class="btn btn-danger btn-sm" onclick="deleteShippingTier(${t.id})">✕</button>
+      </div>`);
+  } catch (err) { toast('Error: ' + err.message, 'error'); }
+}
+
+async function updateShippingTier(id, field, value) {
+  const payload = { [field]: value === '' ? null : (field === 'label' ? value : parseFloat(value)) };
+  try { await api('/api/mappings/shipping/' + id, { method: 'PUT', body: payload }); }
+  catch(e) { console.warn('shipping tier update failed', e.message); }
+}
+
+async function deleteShippingTier(id) {
+  try {
+    await api('/api/mappings/shipping/' + id, { method: 'DELETE' });
+    document.getElementById('ship-' + id)?.remove();
+    toast('Tier deleted', 'success');
+  } catch (err) { toast('Error: ' + err.message, 'error'); }
+}
 </script>
 </body>
 </html>
