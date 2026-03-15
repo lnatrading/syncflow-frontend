@@ -2053,7 +2053,7 @@ async function addFilterRule(groupId) {
   try {
     const rule = await api('/api/filters/rules', {
       method: 'POST',
-      body: { group_id: groupId, field: 'price', operator: 'gt', value: '', sort_order: Date.now() }
+      body: { group_id: groupId, field: 'price', operator: 'gt', value: '', sort_order: 0 }
     });
     _filterState.rules.push(rule);
     renderFilterTree();
@@ -2065,7 +2065,7 @@ async function addFilterGroup(parentGroupId) {
   try {
     const group = await api('/api/filters/groups', {
       method: 'POST',
-      body: { parent_group_id: parentGroupId, logic_op: 'AND', sort_order: Date.now() }
+      body: { parent_group_id: parentGroupId, logic_op: 'AND', sort_order: 0 }
     });
     _filterState.groups.push(group);
     renderFilterTree();
