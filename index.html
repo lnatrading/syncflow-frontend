@@ -341,22 +341,29 @@
           <button class="btn btn-ghost" style="margin-top:12px;" onclick="addMarkupRow()">+ Add Rule</button>
         </div>
         <div class="form-card">
-          <div class="form-card-title">🚚 Shipping Cost Tiers</div>
+          <div class="form-card-title">🚚 Parcel Classification Rules</div>
           <div style="font-size:12px;color:var(--muted2);margin-bottom:14px;">
-            Dimensions are auto-read from product specs. Units are normalised automatically (mm→cm, g→kg).
-            Billable weight = max(actual weight, volumetric weight). Tiers are checked in order — first match wins.
-          </div>
-          <div style="display:grid;grid-template-columns:90px 90px 90px 110px 90px 90px auto;gap:8px;align-items:center;margin-bottom:8px;">
-            <div style="font-size:11px;color:var(--muted2);font-weight:600;">Min kg</div>
-            <div style="font-size:11px;color:var(--muted2);font-weight:600;">Max kg</div>
-            <div style="font-size:11px;color:var(--muted2);font-weight:600;">Max vol.kg</div>
-            <div style="font-size:11px;color:var(--muted2);font-weight:600;">Max side (cm)</div>
-            <div style="font-size:11px;color:var(--muted2);font-weight:600;">Cost (€)</div>
-            <div style="font-size:11px;color:var(--muted2);font-weight:600;">Label</div>
-            <div></div>
+            Classify each product into a parcel class (XS/S/M/L/XL) based on its dimensions and weight.
+            Rules checked by priority — first match wins. Units normalised automatically (mm→cm, g→kg).
+            Add a catch-all rule at the end (no conditions) for unclassified products.
           </div>
           <div id="shipping-container"><div style="font-size:13px;color:var(--muted2);padding:10px 0;">Select a supplier above</div></div>
-          <button class="btn btn-ghost" style="margin-top:12px;" onclick="addShippingTier()">+ Add Tier</button>
+          <button class="btn btn-ghost" style="margin-top:12px;" onclick="addShippingRule('class')">+ Add Classification Rule</button>
+        </div>
+        <div class="form-card">
+          <div class="form-card-title">📦 Inbound Shipping Rates (Supplier → Warehouse)</div>
+          <div style="font-size:12px;color:var(--muted2);margin-bottom:14px;">
+            Set the inbound cost per parcel class. This is added to the product sale price as landed cost.
+            Class labels must match your classification rules above.
+          </div>
+          <div style="display:grid;grid-template-columns:120px 120px 1fr auto;gap:8px;align-items:center;margin-bottom:8px;">
+            <div style="font-size:11px;color:var(--muted2);font-weight:600;">Class Label</div>
+            <div style="font-size:11px;color:var(--muted2);font-weight:600;">Inbound Cost (€)</div>
+            <div style="font-size:11px;color:var(--muted2);font-weight:600;">Notes</div>
+            <div></div>
+          </div>
+          <div id="inbound-rates-container"><div style="font-size:13px;color:var(--muted2);padding:10px 0;">Select a supplier above</div></div>
+          <button class="btn btn-ghost" style="margin-top:12px;" onclick="addInboundRate()">+ Add Rate</button>
         </div>
       </div>
 
@@ -2779,91 +2786,191 @@ async function addMarkupRow() {
 }
 
 
-// ─── SHIPPING TIERS ───────────────────────────────────────
+// ─── SHIPPING CLASSIFICATION RULES + INBOUND RATES ─────────────────────────
 
-function renderShippingTiers(tiers, supplierId) {
-  const container = document.getElementById('shipping-container');
-  if (!tiers || !tiers.length) {
-    container.innerHTML = '<div style="font-size:13px;color:var(--muted2);padding:10px 0;">No shipping tiers yet. Add one below.</div>';
-    return;
+const SHIP_FIELDS = [
+  { value: 'Weight',     label: 'Weight (kg/g)' },
+  { value: 'Width',      label: 'Width (cm/mm)' },
+  { value: 'Height',     label: 'Height (cm/mm)' },
+  { value: 'Depth',      label: 'Depth (cm/mm)' },
+  { value: 'vol_weight', label: 'Volumetric Weight (kg)' },
+];
+const SHIP_OPS = [
+  { value: 'lt',  label: 'less than' },
+  { value: 'lte', label: 'less or equal' },
+  { value: 'gt',  label: 'greater than' },
+  { value: 'gte', label: 'greater or equal' },
+  { value: 'eq',  label: 'equal to' },
+];
+
+function renderShippingTiers(rules, supplierId) {
+  const classRules   = (rules || []).filter(r => r.rule_type === 'class' || !r.rule_type);
+  const inboundRates = (rules || []).filter(r => r.rule_type === 'rate');
+
+  // Classification rules
+  const classContainer = document.getElementById('shipping-container');
+  if (!classRules.length) {
+    classContainer.innerHTML = '<div style="font-size:13px;color:var(--muted2);padding:10px 0;">No classification rules yet.</div>';
+  } else {
+    classContainer.innerHTML = classRules.map(r => renderShippingRuleBlock(r)).join('');
   }
-  container.innerHTML = tiers.map(t => `
-    <div id="ship-${t.id}" style="display:grid;grid-template-columns:90px 90px 90px 110px 90px 90px auto;gap:8px;align-items:center;margin-bottom:8px;">
-      <input type="number" step="0.01" value="${t.min_weight_kg ?? ''}" placeholder="0"
-        style="font-family:'DM Mono',monospace;font-size:12px;"
-        onchange="updateShippingTier(${t.id},'min_weight_kg',this.value)">
-      <input type="number" step="0.01" value="${t.max_weight_kg ?? ''}" placeholder="∞"
-        style="font-family:'DM Mono',monospace;font-size:12px;"
-        onchange="updateShippingTier(${t.id},'max_weight_kg',this.value)">
-      <input type="number" step="0.01" value="${t.max_vol_weight ?? ''}" placeholder="∞"
-        style="font-family:'DM Mono',monospace;font-size:12px;"
-        onchange="updateShippingTier(${t.id},'max_vol_weight',this.value)">
-      <input type="number" step="0.1" value="${t.max_longest_side_cm ?? ''}" placeholder="∞"
-        style="font-family:'DM Mono',monospace;font-size:12px;"
-        onchange="updateShippingTier(${t.id},'max_longest_side_cm',this.value)">
-      <input type="number" step="0.01" value="${t.cost ?? 0}" placeholder="0.00"
-        style="font-family:'DM Mono',monospace;font-size:12px;font-weight:600;"
-        onchange="updateShippingTier(${t.id},'cost',this.value)">
-      <input type="text" value="${t.label ?? ''}" placeholder="e.g. Small parcel"
-        style="font-size:12px;"
-        onchange="updateShippingTier(${t.id},'label',this.value)">
-      <button class="btn btn-danger btn-sm" onclick="deleteShippingTier(${t.id})">✕</button>
-    </div>`).join('');
+
+  // Inbound rates
+  const ratesContainer = document.getElementById('inbound-rates-container');
+  if (!inboundRates.length) {
+    ratesContainer.innerHTML = '<div style="font-size:13px;color:var(--muted2);padding:10px 0;">No inbound rates yet.</div>';
+  } else {
+    ratesContainer.innerHTML = inboundRates.map(r => `
+      <div id="ship-${r.id}" style="display:grid;grid-template-columns:120px 120px 1fr auto;gap:8px;align-items:center;margin-bottom:8px;">
+        <input type="text" value="${r.class_label||''}" placeholder="e.g. XS"
+          style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;text-align:center;"
+          onchange="updateShippingRule(${r.id},'class_label',this.value)">
+        <input type="number" step="0.01" value="${r.cost||0}" placeholder="0.00"
+          style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;"
+          onchange="updateShippingRule(${r.id},'cost',this.value)">
+        <input type="text" value="${r.label||''}" placeholder="e.g. DPD Small (supplier→Warsaw)"
+          style="font-size:12px;" onchange="updateShippingRule(${r.id},'label',this.value)">
+        <button class="btn btn-danger btn-sm" onclick="deleteShippingRule(${r.id})">✕</button>
+      </div>`).join('');
+  }
 }
 
-async function addShippingTier() {
+function renderShippingRuleBlock(r) {
+  const conditions = r.conditions || [];
+  const logicOp = r.logic_op || 'AND';
+  const condRows = conditions.map((c, i) => `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+      <select style="flex:1;font-size:12px;" onchange="updateShipCondition(${r.id},${i},'field',this.value)">
+        ${SHIP_FIELDS.map(f => `<option value="${f.value}" ${c.field===f.value?'selected':''}>${f.label}</option>`).join('')}
+      </select>
+      <select style="width:130px;font-size:12px;" onchange="updateShipCondition(${r.id},${i},'operator',this.value)">
+        ${SHIP_OPS.map(o => `<option value="${o.value}" ${c.operator===o.value?'selected':''}>${o.label}</option>`).join('')}
+      </select>
+      <input type="number" step="0.01" value="${c.value??''}" placeholder="value"
+        style="width:80px;font-family:'DM Mono',monospace;font-size:12px;"
+        onchange="updateShipCondition(${r.id},${i},'value',this.value)">
+      <button class="btn btn-danger btn-sm" onclick="removeShipCondition(${r.id},${i})">✕</button>
+    </div>`).join('');
+
+  return `<div id="ship-${r.id}" style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+      <span style="font-size:11px;color:var(--muted2);font-weight:600;">CLASS</span>
+      <input type="text" value="${r.class_label||''}" placeholder="e.g. XS"
+        style="width:70px;font-family:'DM Mono',monospace;font-size:14px;font-weight:700;text-align:center;"
+        onchange="updateShippingRule(${r.id},'class_label',this.value)">
+      <span style="font-size:11px;color:var(--muted2);font-weight:600;margin-left:6px;">LABEL</span>
+      <input type="text" value="${r.label||''}" placeholder="e.g. Small parcel ≤5kg"
+        style="flex:1;min-width:120px;font-size:12px;"
+        onchange="updateShippingRule(${r.id},'label',this.value)">
+      <span style="font-size:11px;color:var(--muted2);font-weight:600;">PRIORITY</span>
+      <input type="number" value="${r.priority||1}" min="1"
+        style="width:55px;font-family:'DM Mono',monospace;font-size:12px;"
+        onchange="updateShippingRule(${r.id},'priority',this.value)">
+      <button class="btn btn-danger btn-sm" onclick="deleteShippingRule(${r.id})">✕ Delete</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <span style="font-size:11px;color:var(--muted2);">CONDITIONS</span>
+      <button class="btn btn-ghost btn-sm" onclick="toggleShipLogic(${r.id})" id="ship-logic-${r.id}"
+        style="font-weight:700;min-width:40px;">${logicOp}</button>
+      <span style="font-size:11px;color:var(--muted2);">— no conditions = catch-all</span>
+    </div>
+    <div id="ship-conds-${r.id}">${condRows||'<div style="font-size:12px;color:var(--accent);padding:4px 0;">✓ Catch-all — matches all unclassified products</div>'}</div>
+    <button class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="addShipCondition(${r.id})">+ Add condition</button>
+  </div>`;
+}
+
+async function addShippingRule(type = 'class') {
   const supplierId = document.getElementById('mapping-supplier-select').value;
   if (!supplierId) { toast('Select a supplier first', 'error'); return; }
-  const tiers = document.getElementById('shipping-container').querySelectorAll('[id^="ship-"]');
+  const existing = document.querySelectorAll('[id^="ship-"]').length;
   try {
-    const t = await api('/api/mappings/shipping', { method: 'POST', body: {
+    const r = await api('/api/mappings/shipping', { method: 'POST', body: {
       supplier_id: parseInt(supplierId),
-      min_weight_kg: 0,
-      max_weight_kg: null,
-      max_vol_weight: null,
-      max_longest_side_cm: null,
-      cost: 0,
+      rule_type: type,
+      class_label: '',
       label: '',
-      sort_order: tiers.length,
+      price: 0,
+      cost: 0,
+      logic_op: 'AND',
+      priority: existing + 1,
+      conditions: [],
     }});
-    const container = document.getElementById('shipping-container');
-    if (container.querySelector('div[style*="No shipping tiers"]')) container.innerHTML = '';
-    container.insertAdjacentHTML('beforeend', `
-      <div id="ship-${t.id}" style="display:grid;grid-template-columns:90px 90px 90px 110px 90px 90px auto;gap:8px;align-items:center;margin-bottom:8px;">
-        <input type="number" step="0.01" value="0" placeholder="0"
-          style="font-family:'DM Mono',monospace;font-size:12px;"
-          onchange="updateShippingTier(${t.id},'min_weight_kg',this.value)">
-        <input type="number" step="0.01" value="" placeholder="∞"
-          style="font-family:'DM Mono',monospace;font-size:12px;"
-          onchange="updateShippingTier(${t.id},'max_weight_kg',this.value)">
-        <input type="number" step="0.01" value="" placeholder="∞"
-          style="font-family:'DM Mono',monospace;font-size:12px;"
-          onchange="updateShippingTier(${t.id},'max_vol_weight',this.value)">
-        <input type="number" step="0.1" value="" placeholder="∞"
-          style="font-family:'DM Mono',monospace;font-size:12px;"
-          onchange="updateShippingTier(${t.id},'max_longest_side_cm',this.value)">
-        <input type="number" step="0.01" value="0" placeholder="0.00"
-          style="font-family:'DM Mono',monospace;font-size:12px;font-weight:600;"
-          onchange="updateShippingTier(${t.id},'cost',this.value)">
-        <input type="text" value="" placeholder="e.g. Small parcel"
-          style="font-size:12px;"
-          onchange="updateShippingTier(${t.id},'label',this.value)">
-        <button class="btn btn-danger btn-sm" onclick="deleteShippingTier(${t.id})">✕</button>
-      </div>`);
+    const container = type === 'rate'
+      ? document.getElementById('inbound-rates-container')
+      : document.getElementById('shipping-container');
+    if (container.querySelector('div[style*="No"]')) container.innerHTML = '';
+    if (type === 'rate') {
+      container.insertAdjacentHTML('beforeend', `
+        <div id="ship-${r.id}" style="display:grid;grid-template-columns:120px 120px 1fr auto;gap:8px;align-items:center;margin-bottom:8px;">
+          <input type="text" value="" placeholder="e.g. XS"
+            style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;text-align:center;"
+            onchange="updateShippingRule(${r.id},'class_label',this.value)">
+          <input type="number" step="0.01" value="0" placeholder="0.00"
+            style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;"
+            onchange="updateShippingRule(${r.id},'cost',this.value)">
+          <input type="text" value="" placeholder="e.g. DPD Small"
+            style="font-size:12px;" onchange="updateShippingRule(${r.id},'label',this.value)">
+          <button class="btn btn-danger btn-sm" onclick="deleteShippingRule(${r.id})">✕</button>
+        </div>`);
+    } else {
+      container.insertAdjacentHTML('beforeend', renderShippingRuleBlock(r));
+    }
   } catch (err) { toast('Error: ' + err.message, 'error'); }
 }
 
-async function updateShippingTier(id, field, value) {
-  const payload = { [field]: value === '' ? null : (field === 'label' ? value : parseFloat(value)) };
-  try { await api('/api/mappings/shipping/' + id, { method: 'PUT', body: payload }); }
-  catch(e) { console.warn('shipping tier update failed', e.message); }
+async function addInboundRate() {
+  await addShippingRule('rate');
 }
 
-async function deleteShippingTier(id) {
+async function updateShippingRule(id, field, value) {
+  const payload = { [field]: (field === 'label' || field === 'class_label')
+    ? value : (value === '' ? null : parseFloat(value)) };
+  try { await api('/api/mappings/shipping/' + id, { method: 'PUT', body: payload }); }
+  catch(e) { console.warn('shipping rule update failed', e.message); }
+}
+
+async function deleteShippingRule(id) {
   try {
     await api('/api/mappings/shipping/' + id, { method: 'DELETE' });
     document.getElementById('ship-' + id)?.remove();
-    toast('Tier deleted', 'success');
+    toast('Rule deleted', 'success');
+  } catch (err) { toast('Error: ' + err.message, 'error'); }
+}
+
+async function toggleShipLogic(id) {
+  const btn = document.getElementById('ship-logic-' + id);
+  const newOp = btn.textContent.trim() === 'AND' ? 'OR' : 'AND';
+  btn.textContent = newOp;
+  await updateShippingRule(id, 'logic_op', newOp);
+}
+
+async function addShipCondition(ruleId) {
+  try {
+    const r = await api('/api/mappings/shipping/' + ruleId);
+    const conditions = [...(r.conditions || []), { field: 'Weight', operator: 'lte', value: '' }];
+    await api('/api/mappings/shipping/' + ruleId, { method: 'PUT', body: { conditions } });
+    const fresh = await api('/api/mappings/shipping/' + ruleId);
+    document.getElementById('ship-' + ruleId).outerHTML = renderShippingRuleBlock(fresh);
+  } catch (err) { toast('Error: ' + err.message, 'error'); }
+}
+
+async function updateShipCondition(ruleId, index, field, value) {
+  try {
+    const r = await api('/api/mappings/shipping/' + ruleId);
+    const conditions = r.conditions || [];
+    if (!conditions[index]) return;
+    conditions[index][field] = field === 'value' ? parseFloat(value) : value;
+    await api('/api/mappings/shipping/' + ruleId, { method: 'PUT', body: { conditions } });
+  } catch(e) { console.warn('condition update failed', e.message); }
+}
+
+async function removeShipCondition(ruleId, index) {
+  try {
+    const r = await api('/api/mappings/shipping/' + ruleId);
+    const conditions = (r.conditions || []).filter((_, i) => i !== index);
+    await api('/api/mappings/shipping/' + ruleId, { method: 'PUT', body: { conditions } });
+    const fresh = await api('/api/mappings/shipping/' + ruleId);
+    document.getElementById('ship-' + ruleId).outerHTML = renderShippingRuleBlock(fresh);
   } catch (err) { toast('Error: ' + err.message, 'error'); }
 }
 </script>
