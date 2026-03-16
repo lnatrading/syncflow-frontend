@@ -238,7 +238,8 @@
     <div class="nav-label">Integrations</div>
     <div class="nav-item" onclick="showPanel('odoo',this)"><span class="nav-icon">🟣</span> Odoo Connect</div>
     <div class="nav-item" onclick="showPanel('filters',this)"><span class="nav-icon">⊟</span> Export Filters</div>
-    <div class="nav-item" onclick="showPanel('settings',this)"><span class="nav-icon">⚙</span> Settings</div>
+    <div class="nav-item" onclick="showPanel('price-checker',this)"><span class="nav-icon">🔍</span> Price Checker</div>
+<div class="nav-item" onclick="showPanel('settings',this)"><span class="nav-icon">⚙</span> Settings</div>
     <div class="sidebar-footer">
       <div class="user-chip">
         <div class="user-avatar" id="user-avatar-initials">--</div>
@@ -302,6 +303,7 @@
           <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;">Product Catalog</div>
           <div style="display:flex;gap:10px;align-items:center;">
             <div class="search-bar"><span style="color:var(--muted2)">🔍</span><input type="text" id="product-search" placeholder="Search products…" oninput="debouncedProductSearch()"></div>
+<select id="product-supplier-filter" onchange="loadProducts(1)" style="width:160px;padding:9px 12px;font-size:13px;"><option value="">All Suppliers</option></select>
             <select id="product-status-filter" onchange="loadProducts(1)" style="width:140px;padding:9px 12px;font-size:13px;"><option value="">All Statuses</option><option value="active">Active</option><option value="outofstock">Out of Stock</option><option value="low">Low Stock</option></select>
           </div>
         </div>
@@ -533,6 +535,28 @@
         </div>
       </div>
 
+
+      <!-- PRICE CHECKER -->
+      <div class="panel" id="panel-price-checker">
+        <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;margin-bottom:20px;">🔍 Product Price Checker</div>
+        <div class="card" style="padding:24px;max-width:700px;">
+          <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:200px;">
+              <label style="font-size:12px;color:var(--muted2);display:block;margin-bottom:6px;">Search by SKU or EAN</label>
+              <input type="text" id="pc-search" placeholder="e.g. BK500EI or 731304016359"
+                style="width:100%;font-family:'DM Mono',monospace;"
+                oninput="debouncedPriceCheck()">
+            </div>
+            <div style="flex:0 0 180px;">
+              <label style="font-size:12px;color:var(--muted2);display:block;margin-bottom:6px;">Supplier</label>
+              <select id="pc-supplier" onchange="runPriceCheck()" style="width:100%;padding:9px 12px;font-size:13px;">
+                <option value="">All Suppliers</option>
+              </select>
+            </div>
+          </div>
+          <div id="pc-result"></div>
+        </div>
+      </div>
 
       <!-- SETTINGS -->
       <div class="panel" id="panel-settings">
@@ -940,7 +964,7 @@ function initApp() {
 // ─── NAV ──────────────────────────────────────────────────
 const PANEL_LOADERS = {
   dashboard:  loadDashboard,
-  products:   () => loadProducts(1),
+  products:   () => { loadProducts(1); populateSupplierDropdowns(); },
   suppliers:  loadSuppliers,
   mappings:   loadMappingSuppliers,
   odoo:       loadOdooConfig,
@@ -1004,15 +1028,17 @@ async function loadDashboard() {
 // ─── PRODUCTS ─────────────────────────────────────────────
 async function loadProducts(page = 1) {
   currentPage = page;
-  const search   = document.getElementById('product-search')?.value || '';
-  const status   = document.getElementById('product-status-filter')?.value || '';
-  const tbody    = document.getElementById('products-table');
+  const search     = document.getElementById('product-search')?.value || '';
+  const status     = document.getElementById('product-status-filter')?.value || '';
+  const supplierId = document.getElementById('product-supplier-filter')?.value || '';
+  const tbody      = document.getElementById('products-table');
   tbody.innerHTML = '<tr><td colspan="10" class="loader"><span class="spinning">⟳</span> Loading…</td></tr>';
 
   try {
     const params = new URLSearchParams({ page, limit: 50 });
-    if (search) params.set('search', search);
-    if (status) params.set('status', status);
+    if (search)     params.set('search', search);
+    if (status)     params.set('status', status);
+    if (supplierId) params.set('supplier_id', supplierId);
     const d = await api('/api/products?' + params);
 
     if (!d.data.length) { tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--muted2)">No products found</td></tr>'; }
@@ -2743,12 +2769,6 @@ function renderPricingRuleRow(m) {
       <input type="number" step="0.01" id="av-${m.id}" value="${actionVal}" placeholder="value"
         style="width:100px;font-family:'DM Mono',monospace;"
         onchange="updateMarkupField(${m.id},'markup_pct',this.value)">
-      <span style="font-size:12px;color:var(--muted2)">+ ship</span>
-      <input type="number" step="0.01" id="sa-${m.id}" value="${shippingVal}" placeholder="0.00"
-        title="Add shipping cost (€)"
-        style="width:80px;font-family:'DM Mono',monospace;"
-        onchange="updateMarkupField(${m.id},'shipping_add',this.value)">
-      <span style="font-size:11px;color:var(--muted2)">€</span>
       <button class="btn btn-danger btn-sm" onclick="deleteMarkup(${m.id})">✕</button>
     </div>
   </div>`;
@@ -2974,6 +2994,108 @@ async function removeShipCondition(ruleId, index) {
     const fresh = await api('/api/mappings/shipping/' + ruleId);
     document.getElementById('ship-' + ruleId).outerHTML = renderShippingRuleBlock(fresh);
   } catch (err) { toast('Error: ' + err.message, 'error'); }
+}
+
+// ─── SUPPLIER DROPDOWN POPULATION ────────────────────────
+// Populates supplier dropdowns in products page and price checker
+async function populateSupplierDropdowns() {
+  try {
+    const suppliers = await api('/api/suppliers');
+    const opts = suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+    const productFilter = document.getElementById('product-supplier-filter');
+    const pcSupplier    = document.getElementById('pc-supplier');
+    if (productFilter) productFilter.innerHTML = '<option value="">All Suppliers</option>' + opts;
+    if (pcSupplier)    pcSupplier.innerHTML    = '<option value="">All Suppliers</option>' + opts;
+  } catch(e) { console.warn('Could not load suppliers for dropdowns:', e.message); }
+}
+
+// ─── PRICE CHECKER ─────────────────────────────────────────
+let _pcTimeout = null;
+function debouncedPriceCheck() {
+  clearTimeout(_pcTimeout);
+  _pcTimeout = setTimeout(runPriceCheck, 400);
+}
+
+async function runPriceCheck() {
+  const query      = document.getElementById('pc-search')?.value.trim() || '';
+  const supplierId = document.getElementById('pc-supplier')?.value || '';
+  const result     = document.getElementById('pc-result');
+  if (!query) { result.innerHTML = ''; return; }
+
+  result.innerHTML = '<div style="color:var(--muted2);font-size:13px;">Searching…</div>';
+
+  try {
+    const params = new URLSearchParams({ limit: 5, search: query });
+    if (supplierId) params.set('supplier_id', supplierId);
+    const d = await api('/api/products?' + params);
+
+    if (!d.data || !d.data.length) {
+      result.innerHTML = '<div style="color:var(--muted2);font-size:13px;padding:20px 0;">No products found.</div>';
+      return;
+    }
+
+    result.innerHTML = d.data.map(p => {
+      const markup    = p.sale_price > 0 && p.cost_price > 0
+        ? (((p.sale_price - p.cost_price) / p.cost_price) * 100).toFixed(1) + '%'
+        : '—';
+      const specsRows = p.specs ? Object.entries(p.specs)
+        .filter(([k]) => ['Weight','Width','Height','Depth'].includes(k))
+        .map(([k,v]) => `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);">
+          <span style="color:var(--muted2)">${k}</span><span style="font-family:'DM Mono',monospace">${v}</span></div>`).join('') : '';
+
+      return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:14px;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;gap:10px;">
+          <div>
+            <div style="font-size:15px;font-weight:600;margin-bottom:4px;">${p.name}</div>
+            <div style="display:flex;gap:12px;font-size:12px;color:var(--muted2);">
+              <span>SKU: <span style="font-family:'DM Mono',monospace;color:var(--accent)">${p.sku}</span></span>
+              ${p.ean ? `<span>EAN: <span style="font-family:'DM Mono',monospace">${p.ean}</span></span>` : ''}
+              <span>Supplier: ${p.suppliers?.name || '—'}</span>
+            </div>
+          </div>
+          <div style="text-align:right;flex-shrink:0;">
+            ${productStatusBadge(p.status)}
+            <div style="font-size:11px;color:var(--muted2);margin-top:4px;">Stock: ${p.stock_qty}</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:${specsRows ? '14px' : '0'};">
+          <div style="background:var(--card);border-radius:10px;padding:14px;">
+            <div style="font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">Pricing Breakdown</div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px solid var(--border);">
+              <span style="color:var(--muted2)">Cost Price</span>
+              <span style="font-family:'DM Mono',monospace">€${Number(p.cost_price||0).toFixed(2)}</span>
+            </div>
+            ${p.shipping_cost ? `<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px solid var(--border);">
+              <span style="color:var(--muted2)">Inbound Shipping</span>
+              <span style="font-family:'DM Mono',monospace;color:#f59e0b">+€${Number(p.shipping_cost).toFixed(2)}</span>
+            </div>` : ''}
+            <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px solid var(--border);">
+              <span style="color:var(--muted2)">Total Markup</span>
+              <span style="font-family:'DM Mono',monospace;color:var(--accent)">${markup}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;padding:8px 0 0;">
+              <span>Sale Price</span>
+              <span style="font-family:'DM Mono',monospace;color:var(--accent)">€${Number(p.sale_price||0).toFixed(2)}</span>
+            </div>
+          </div>
+          <div style="background:var(--card);border-radius:10px;padding:14px;">
+            <div style="font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">Parcel Info</div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px solid var(--border);">
+              <span style="color:var(--muted2)">Shipping Class</span>
+              <span style="font-family:'DM Mono',monospace;font-weight:700;color:var(--accent)">${p.shipping_class || '— not classified'}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px solid var(--border);">
+              <span style="color:var(--muted2)">Category</span>
+              <span style="font-size:12px">${p.category || '—'}${p.subcategory ? ' › '+p.subcategory : ''}</span>
+            </div>
+            ${specsRows || '<div style="font-size:12px;color:var(--muted2);padding:8px 0;">No dimension data</div>'}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(err) {
+    result.innerHTML = `<div style="color:var(--error);font-size:13px;">${err.message}</div>`;
+  }
 }
 </script>
 </body>
