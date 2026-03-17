@@ -1923,14 +1923,22 @@ let _filterMyAttributes = [];
 
 // ── FIELDS and OPERATORS config ──────────────────────────────
 const FILTER_FIELDS = [
-  { value: 'price',       label: 'Price',               type: 'number' },
-  { value: 'cost_price',  label: 'Cost Price',           type: 'number' },
-  { value: 'stock_qty',   label: 'QTY',                  type: 'number' },
-  { value: 'name',        label: 'Product Name',         type: 'text'   },
-  { value: 'description', label: 'Product Description',  type: 'text'   },
-  { value: 'sku',         label: 'SKU',                  type: 'text'   },
-  { value: 'ean',         label: 'EAN',                  type: 'text'   },
-  { value: 'category',    label: 'Category',             type: 'category'},
+  { value: 'price',          label: 'Sale Price',           type: 'number' },
+  { value: 'cost_price',     label: 'Cost Price',           type: 'number' },
+  { value: 'stock_qty',      label: 'Stock QTY',            type: 'number' },
+  { value: 'name',           label: 'Product Name',         type: 'text'   },
+  { value: 'description',    label: 'Product Description',  type: 'text'   },
+  { value: 'sku',            label: 'SKU',                  type: 'text'   },
+  { value: 'ean',            label: 'EAN',                  type: 'text'   },
+  { value: 'brand',          label: 'Brand / Manufacturer', type: 'text'   },
+  { value: 'category',       label: 'Category',             type: 'category'},
+  { value: 'subcategory',    label: 'Subcategory',          type: 'text'   },
+  { value: 'shipping_class', label: 'Shipping Class',       type: 'text'   },
+  // Dimensions — populated from datasheet specs
+  { value: 'weight_kg',      label: 'Weight (kg)',          type: 'number' },
+  { value: 'width_cm',       label: 'Width (cm)',           type: 'number' },
+  { value: 'height_cm',      label: 'Height (cm)',          type: 'number' },
+  { value: 'depth_cm',       label: 'Depth (cm)',           type: 'number' },
 ];
 
 const OPERATORS_BY_TYPE = {
