@@ -707,6 +707,12 @@
         <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px;">General</div>
         <div class="form-row">
           <div class="form-group" style="margin:0"><label>Supplier Name</label><input type="text" id="sup-name" placeholder="e.g. Elko Group"></div>
+          <div class="form-group" style="margin:0"><label>Fulfillment Model</label>
+            <select id="sup-fulfillment">
+              <option value="cross_dock">Cross-dock (→ warehouse)</option>
+              <option value="dropship">Dropship (→ customer)</option>
+            </select>
+          </div>
           <div class="form-group" style="margin:0"><label>Sync Frequency</label>
             <select id="sup-freq">
               <option value="15">Every 15 min</option>
@@ -832,6 +838,12 @@
         <div class="form-row">
           <div class="form-group" style="margin:0"><label>Supplier Name</label><input type="text" id="edit-sup-name"></div>
           <div class="form-group" style="margin:0"><label>Sync Frequency (minutes)</label><input type="number" id="edit-sup-freq" value="30" min="5"></div>
+          <div class="form-group" style="margin:0"><label>Fulfillment Model</label>
+            <select id="edit-sup-fulfillment">
+              <option value="cross_dock">Cross-dock (supplier → warehouse → customer)</option>
+              <option value="dropship">Dropship (supplier → customer directly)</option>
+            </select>
+          </div>
         </div>
       </div>
       <div>
@@ -936,7 +948,7 @@ async function doLogin() {
     const initials = email.split('@')[0].slice(0,2).toUpperCase();
     document.getElementById('user-avatar-initials').textContent = initials;
     document.getElementById('user-name-label').textContent = email;
-    document.getElementById('settings-backend-url').value = API;
+    const _sbuEl = document.getElementById('settings-backend-url'); if (_sbuEl) _sbuEl.value = API;
 
     initApp();
   } catch (err) {
@@ -1139,7 +1151,8 @@ async function loadSuppliers() {
       const epLabel = epCount === 1 ? '1 endpoint' : `${epCount} endpoints`;
       return `<tr>
         <td style="font-weight:500">${s.name || '—'}</td>
-        <td><span style="font-size:12px;color:var(--muted2)">${epLabel}</span> <span style="font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);background:var(--bg);padding:2px 7px;border-radius:5px;margin-left:4px;">${s.auth_type||'none'}</span></td>
+        <td><span style="font-size:12px;color:var(--muted2)">${epLabel}</span> <span style="font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);background:var(--bg);padding:2px 7px;border-radius:5px;margin-left:4px;">${s.auth_type||'none'}</span>
+          <span style="font-size:11px;color:var(--muted2);margin-left:4px;">${s.fulfillment_model==='dropship'?'🚀 dropship':'🏭 cross-dock'}</span></td>
         <td style="font-family:'DM Mono',monospace">${(s.product_count||0).toLocaleString()}</td>
         <td><span style="font-size:12px;color:var(--muted2)">Every ${s.sync_freq} min</span></td>
         <td><span style="font-size:12px;color:var(--muted2)">${s.last_sync ? timeAgo(s.last_sync) : 'Never'}</span></td>
@@ -1269,6 +1282,7 @@ async function addSupplier() {
     name,
     sync_freq: parseInt(document.getElementById('sup-freq').value),
     auth_type: authType,
+    fulfillment_model: document.getElementById('sup-fulfillment')?.value || 'cross_dock',
     endpoints,
   };
 
@@ -1527,7 +1541,7 @@ async function clearActivity() {
 
 // ─── SETTINGS ─────────────────────────────────────────────
 function saveBackendUrl() {
-  const url = document.getElementById('settings-backend-url').value.trim().replace(/\/$/, '');
+  const url = (document.getElementById('settings-backend-url')?.value || API).trim().replace(/\/$/, '');
   API = url;
   localStorage.setItem('syncflow_backend', url);
   toast('Backend URL saved — reconnecting…', 'info');
@@ -2606,6 +2620,7 @@ async function openEditSupplier(id) {
     document.getElementById('edit-sup-id').value = s.id;
     document.getElementById('edit-sup-name').value = s.name || '';
     document.getElementById('edit-sup-freq').value = s.sync_freq || 30;
+    document.getElementById('edit-sup-fulfillment').value = s.fulfillment_model || 'cross_dock';
     const authSel = document.getElementById('edit-sup-auth-type');
     authSel.value = s.auth_type || 'none';
     renderEditAuthFields();
@@ -2704,9 +2719,10 @@ async function saveSupplierEdit() {
   if (!endpoints.find(e => e.role === 'products')) { toast('A "products" endpoint is required', 'error'); return; }
 
   const payload = {
-    name:      document.getElementById('edit-sup-name').value.trim(),
-    sync_freq: parseInt(document.getElementById('edit-sup-freq').value),
-    auth_type: authType,
+    name:              document.getElementById('edit-sup-name').value.trim(),
+    sync_freq:         parseInt(document.getElementById('edit-sup-freq').value),
+    auth_type:         authType,
+    fulfillment_model: document.getElementById('edit-sup-fulfillment')?.value || 'cross_dock',
   };
   if (authType === 'basic' || authType === 'query_params') {
     payload.auth_username = document.getElementById('edit-sup-auth-user')?.value.trim() || null;
