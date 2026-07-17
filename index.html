@@ -845,6 +845,10 @@
             </select>
           </div>
         </div>
+        <label style="font-size:12px;color:var(--muted2);margin-top:14px;display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="edit-sup-forecast-stock">
+          Count forecast/incoming stock (e.g. supplier's 24h-forecast qty) as available — only enable if the supplier's fulfillment window still meets your delivery SLA
+        </label>
       </div>
       <div>
         <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px;">Authentication</div>
@@ -2629,6 +2633,7 @@ async function openEditSupplier(id) {
     document.getElementById('edit-sup-name').value = s.name || '';
     document.getElementById('edit-sup-freq').value = s.sync_freq || 30;
     document.getElementById('edit-sup-fulfillment').value = s.fulfillment_model || 'cross_dock';
+    document.getElementById('edit-sup-forecast-stock').checked = !!s.count_forecast_stock;
     const authSel = document.getElementById('edit-sup-auth-type');
     authSel.value = s.auth_type || 'none';
     renderEditAuthFields();
@@ -2739,6 +2744,7 @@ async function saveSupplierEdit() {
     sync_freq:         parseInt(document.getElementById('edit-sup-freq').value),
     auth_type:         authType,
     fulfillment_model: document.getElementById('edit-sup-fulfillment')?.value || 'cross_dock',
+    count_forecast_stock: document.getElementById('edit-sup-forecast-stock')?.checked || false,
   };
   if (authType === 'basic' || authType === 'query_params') {
     payload.auth_username = document.getElementById('edit-sup-auth-user')?.value.trim() || null;
