@@ -2689,7 +2689,15 @@ function addEditEndpointRow(defaults = {}) {
   const id = `edit-ep-${_editEpCount}`;
   const roles = ['products','categories','descriptions','stock','images','datasheets','attributes','variations','other'];
   const roleOpts = roles.map(r => `<option value="${r}" ${(defaults.role||'products')===r?'selected':''}>${r}</option>`).join('');
-  const fmtOpts  = ['json','xml','csv'].map(f => `<option value="${f}" ${(defaults.format||'json')===f?'selected':''}>${f.toUpperCase()}</option>`).join('');
+  const fmtLabelsEdit = {
+    json: 'JSON',
+    xml: 'XML',
+    csv: 'CSV (comma)',
+    csv_semicolon: 'CSV (semicolon)',
+    csv_pipe: 'CSV (pipe)',
+    csv_tab_itscope: 'CSV (tab — ITscope)',
+  };
+  const fmtOpts  = Object.keys(fmtLabelsEdit).map(f => `<option value="${f}" ${(defaults.format||'json')===f?'selected':''}>${fmtLabelsEdit[f]}</option>`).join('');
   const row = document.createElement('div');
   row.id = id;
   row.style.cssText = 'background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px;';
