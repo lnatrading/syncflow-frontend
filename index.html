@@ -305,6 +305,7 @@
             <div class="search-bar"><span style="color:var(--muted2)">🔍</span><input type="text" id="product-search" placeholder="Search products…" oninput="debouncedProductSearch()"></div>
 <select id="product-supplier-filter" onchange="loadProducts(1)" style="width:160px;padding:9px 12px;font-size:13px;"><option value="">All Suppliers</option></select>
             <select id="product-status-filter" onchange="loadProducts(1)" style="width:140px;padding:9px 12px;font-size:13px;"><option value="">All Statuses</option><option value="active">Active</option><option value="outofstock">Out of Stock</option><option value="low">Low Stock</option></select>
+            <button class="btn btn-danger btn-sm" onclick="deleteZeroStock()">Delete Zero-Stock</button>
           </div>
         </div>
         <div class="card">
@@ -1120,6 +1121,20 @@ async function deleteProduct(id) {
   if (!confirm('Remove this product?')) return;
   try { await api('/api/products/' + id, { method: 'DELETE' }); loadProducts(currentPage); toast('Product removed', 'success'); }
   catch (err) { toast('Error: ' + err.message, 'error'); }
+}
+
+async function deleteZeroStock() {
+  const supplierId = document.getElementById('product-supplier-filter')?.value || '';
+  const scope = supplierId
+    ? document.getElementById('product-supplier-filter').selectedOptions[0].textContent
+    : 'ALL suppliers';
+  if (!confirm(`Delete every zero-stock product for ${scope}? This cannot be undone.`)) return;
+  try {
+    const qs = supplierId ? `?supplier_id=${supplierId}` : '';
+    const result = await api('/api/products/bulk/zero-stock' + qs, { method: 'DELETE' });
+    loadProducts(1);
+    toast(`Deleted ${result.deleted} zero-stock product(s)`, 'success');
+  } catch (err) { toast('Error: ' + err.message, 'error'); }
 }
 
 function renderPagination(total, limit, page) {
