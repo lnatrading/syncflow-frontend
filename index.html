@@ -400,6 +400,11 @@
       <div class="panel" id="panel-categories">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
           <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;">Categories</div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button class="btn btn-ghost btn-sm" onclick="downloadCategoryTemplate()">⬇ Download Template</button>
+            <input type="file" id="cat-import-file" accept=".csv" style="display:none;" onchange="importCategoryFile(this.files[0])">
+            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('cat-import-file').click()">⬆ Upload Mapping</button>
+          </div>
         </div>
         <div class="card" style="overflow:visible;">
           <div style="display:flex;gap:0;border-bottom:1px solid var(--border);padding:0 22px;" id="cat-supplier-tabs"></div>
@@ -1777,6 +1782,70 @@ async function loadCategoriesPanel() {
     loadSupplierCategories(1);
   });
   await loadMyCategories();
+}
+
+async function downloadCategoryTemplate() {
+  if (!_catSupplierId) { toast('Select a supplier tab first', 'error'); return; }
+  try {
+    const headers = {};
+    if (API_KEY) headers['Authorization'] = `Bearer ${API_KEY}`;
+    const res = await fetch(`${API}/api/categories/supplier/export?supplier_id=${_catSupplierId}`, { headers });
+    if (!res.ok) throw new Error(`Download failed (${res.status})`);
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `categories_supplier_${_catSupplierId}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    toast('Download failed: ' + e.message, 'error');
+  }
+}
+
+async function importCategoryFile(file) {
+  if (!file) return;
+  if (!_catSupplierId) { toast('Select a supplier tab first', 'error'); return; }
+  try {
+    const csv_text = await file.text();
+
+    // 1. Preview (dry run) — nothing is written yet
+    const preview = await api('/api/categories/supplier/import', {
+      method: 'POST',
+      body: { supplier_id: _catSupplierId, csv_text, dry_run: true },
+    });
+
+    let summary = `This will map ${preview.updated} categor${preview.updated === 1 ? 'y' : 'ies'}.\n`;
+    if (preview.createdCategories) {
+      summary += `\nWill CREATE ${preview.createdCategories} new My Categor${preview.createdCategories === 1 ? 'y' : 'ies'}:\n`;
+      summary += preview.newCategoryNames.map(n => `  • ${n}`).join('\n') + '\n';
+    }
+    if (preview.notFound)  summary += `\n${preview.notFound} row(s) didn't match any existing category (skipped).`;
+    if (preview.skipped)   summary += `\n${preview.skipped} row(s) had a blank My Category and will be left unmapped.`;
+    if (preview.errors?.length) summary += `\n\n${preview.errors.length} error(s):\n` + preview.errors.slice(0,5).map(e => `  • ${e}`).join('\n');
+    summary += `\n\nApply these changes?`;
+
+    if (!confirm(summary)) return;
+
+    // 2. Commit for real
+    const result = await api('/api/categories/supplier/import', {
+      method: 'POST',
+      body: { supplier_id: _catSupplierId, csv_text, dry_run: false },
+    });
+    let msg = `Mapped ${result.updated} categor${result.updated === 1 ? 'y' : 'ies'}`;
+    if (result.createdCategories) msg += `, created ${result.createdCategories} new My Categor${result.createdCategories === 1 ? 'y' : 'ies'}`;
+    if (result.notFound) msg += `, ${result.notFound} row(s) didn't match`;
+    toast(msg, result.errors?.length ? 'error' : 'success');
+    if (result.errors?.length) console.warn('[Category import] errors:', result.errors);
+    loadSupplierCategories(_catPage);
+    loadMyCategories();
+  } catch (e) {
+    toast('Import failed: ' + e.message, 'error');
+  } finally {
+    document.getElementById('cat-import-file').value = ''; // allow re-selecting the same file
+  }
 }
 
 async function loadMyCategories() {
