@@ -374,6 +374,11 @@
       <div class="panel" id="panel-attributes">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
           <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;">Attributes</div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button class="btn btn-ghost btn-sm" onclick="downloadAttributeTemplate()">⬇ Download Template</button>
+            <input type="file" id="attr-import-file" accept=".csv" style="display:none;" onchange="importAttributeFile(this.files[0])">
+            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('attr-import-file').click()">⬆ Upload Mapping</button>
+          </div>
         </div>
         <div class="card" style="overflow:visible;">
           <div style="display:flex;gap:0;border-bottom:1px solid var(--border);padding:0 22px;" id="attr-supplier-tabs"></div>
@@ -1653,6 +1658,70 @@ async function loadAttributesPanel() {
     loadSupplierAttributes();
   });
   await loadMyAttributes();
+}
+
+async function downloadAttributeTemplate() {
+  if (!_attrSupplierId) { toast('Select a supplier tab first', 'error'); return; }
+  try {
+    const headers = {};
+    if (API_KEY) headers['Authorization'] = `Bearer ${API_KEY}`;
+    const res = await fetch(`${API}/api/attributes/supplier/export?supplier_id=${_attrSupplierId}`, { headers });
+    if (!res.ok) throw new Error(`Download failed (${res.status})`);
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `attributes_supplier_${_attrSupplierId}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    toast('Download failed: ' + e.message, 'error');
+  }
+}
+
+async function importAttributeFile(file) {
+  if (!file) return;
+  if (!_attrSupplierId) { toast('Select a supplier tab first', 'error'); return; }
+  try {
+    const csv_text = await file.text();
+
+    // 1. Preview (dry run) — nothing is written yet
+    const preview = await api('/api/attributes/supplier/import', {
+      method: 'POST',
+      body: { supplier_id: _attrSupplierId, csv_text, dry_run: true },
+    });
+
+    let summary = `This will map ${preview.updated} attribute${preview.updated === 1 ? '' : 's'}.\n`;
+    if (preview.createdAttributes) {
+      summary += `\nWill CREATE ${preview.createdAttributes} new My Attribute${preview.createdAttributes === 1 ? '' : 's'} (as type "text" — adjust type afterward if needed):\n`;
+      summary += preview.newAttributeNames.map(n => `  • ${n}`).join('\n') + '\n';
+    }
+    if (preview.notFound)  summary += `\n${preview.notFound} row(s) didn't match any existing attribute (skipped).`;
+    if (preview.skipped)   summary += `\n${preview.skipped} row(s) had a blank My Attribute and will be left unmapped.`;
+    if (preview.errors?.length) summary += `\n\n${preview.errors.length} error(s):\n` + preview.errors.slice(0,5).map(e => `  • ${e}`).join('\n');
+    summary += `\n\nApply these changes?`;
+
+    if (!confirm(summary)) return;
+
+    // 2. Commit for real
+    const result = await api('/api/attributes/supplier/import', {
+      method: 'POST',
+      body: { supplier_id: _attrSupplierId, csv_text, dry_run: false },
+    });
+    let msg = `Mapped ${result.updated} attribute${result.updated === 1 ? '' : 's'}`;
+    if (result.createdAttributes) msg += `, created ${result.createdAttributes} new My Attribute${result.createdAttributes === 1 ? '' : 's'}`;
+    if (result.notFound) msg += `, ${result.notFound} row(s) didn't match`;
+    toast(msg, result.errors?.length ? 'error' : 'success');
+    if (result.errors?.length) console.warn('[Attribute import] errors:', result.errors);
+    loadSupplierAttributes();
+    loadMyAttributes();
+  } catch (e) {
+    toast('Import failed: ' + e.message, 'error');
+  } finally {
+    document.getElementById('attr-import-file').value = '';
+  }
 }
 
 async function loadMyAttributes() {
