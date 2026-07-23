@@ -1266,6 +1266,10 @@ function addEndpointRow(defaults = {}) {
         <label style="font-size:11px">Label (optional)</label>
         <input type="text" class="ep-label" placeholder="e.g. products.json" value="${defaults.label||''}" style="padding:8px 12px;font-size:13px;">
       </div>
+      <div style="flex:0 0 110px;">
+        <label style="font-size:11px" title="How often THIS endpoint refreshes, independent of other endpoints. Leave blank to always fetch whenever the supplier syncs.">Sync freq (min)</label>
+        <input type="number" class="ep-freq" placeholder="e.g. 360" min="0" value="${defaults.sync_freq_minutes||''}" style="padding:8px 12px;font-size:13px;">
+      </div>
       <button class="btn btn-danger btn-sm" style="margin-top:22px;flex-shrink:0;" onclick="document.getElementById('${id}').remove()">✕</button>
     </div>
     <div style="margin-top:10px;">
@@ -1293,6 +1297,7 @@ function collectEndpoints() {
     label:              row.querySelector('.ep-label').value.trim() || null,
     is_parameterised:   row.querySelector('.ep-param').checked,
     param_source_field: row.querySelector('.ep-param-src')?.value.trim() || null,
+    sync_freq_minutes:  parseInt(row.querySelector('.ep-freq')?.value, 10) || null,
   })).filter(e => e.url_template);
 }
 
@@ -2867,6 +2872,8 @@ function addEditEndpointRow(defaults = {}) {
         <select class="edit-ep-format" style="padding:8px 10px;font-size:13px;">${fmtOpts}</select></div>
       <div style="flex:1;min-width:200px;"><label style="font-size:11px">URL / URL Template</label>
         <input type="text" class="edit-ep-url" value="${defaults.url_template||''}" placeholder="https://…" style="font-family:'DM Mono',monospace;font-size:12px;"></div>
+      <div style="flex:0 0 110px;"><label style="font-size:11px" title="How often THIS endpoint refreshes, independent of other endpoints. Leave blank to always fetch whenever the supplier syncs.">Sync freq (min)</label>
+        <input type="number" class="edit-ep-freq" min="0" value="${defaults.sync_freq_minutes||''}" placeholder="e.g. 360" style="font-size:12px;"></div>
       <button class="btn btn-danger btn-sm" style="margin-top:20px;" onclick="document.getElementById('${id}').remove()">✕</button>
     </div>
     <label style="font-size:12px;color:var(--muted2);margin-top:10px;display:flex;align-items:center;gap:8px;cursor:pointer;">
@@ -2878,10 +2885,11 @@ function addEditEndpointRow(defaults = {}) {
 
 function collectEditEndpoints() {
   return Array.from(document.getElementById('edit-endpoints-container').children).map(row => ({
-    role:             row.querySelector('.edit-ep-role')?.value || 'products',
-    format:           row.querySelector('.edit-ep-format')?.value || 'json',
-    url_template:     row.querySelector('.edit-ep-url')?.value.trim() || '',
-    is_parameterised: row.querySelector('.edit-ep-param')?.checked || false,
+    role:               row.querySelector('.edit-ep-role')?.value || 'products',
+    format:             row.querySelector('.edit-ep-format')?.value || 'json',
+    url_template:       row.querySelector('.edit-ep-url')?.value.trim() || '',
+    is_parameterised:   row.querySelector('.edit-ep-param')?.checked || false,
+    sync_freq_minutes:  parseInt(row.querySelector('.edit-ep-freq')?.value, 10) || null,
   })).filter(ep => ep.url_template);
 }
 
