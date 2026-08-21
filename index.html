@@ -747,6 +747,7 @@
             <option value="header">API Key Header — key sent as request header (BigBuy)</option>
             <option value="api_key_url">Key in URL — key is already inside the URL (Mobilux)</option>
             <option value="query_params">Query Params — credentials appended to URL (TD Baltic)</option>
+            <option value="post_body">POST Body — credentials sent as form fields on every POST (AB.pl)</option>
           </select>
         </div>
         <div id="auth-fields-container"></div>
@@ -869,6 +870,7 @@
             <option value="basic">Basic Auth</option>
             <option value="header">Header (API Key)</option>
             <option value="query_params">Query Params</option>
+            <option value="post_body">POST Body (AB.pl)</option>
             <option value="api_key_url">API Key in URL</option>
           </select>
         </div>
@@ -1218,6 +1220,11 @@ function renderAuthFields() {
         <div class="form-row">${inp('sup-auth-user','Username (appended as ?username=)','ABAYOUMI-XML')}${inp('sup-auth-pass','Password (appended as ?pwd=)','CT04ct09ct1984*','password')}</div>
         <div style="margin-top:10px">${inp('sup-auth-extra','Extra Params (JSON) — e.g. orgnum, ean','{"orgnum":"276054","ean":"Y"}')}</div>`;
       break;
+    case 'post_body':
+      c.innerHTML = `
+        <div class="form-row">${inp('sup-auth-user','Login (sent as login= on every POST)','a.bayoumi0')}${inp('sup-auth-pass','Password (sent as pass=)','••••••••','password')}</div>
+        <div style="margin-top:10px">${inp('sup-auth-extra','Extra Params (JSON) — e.g. AB.pl customer code','{"client":"40557098"}')}</div>`;
+      break;
     case 'api_key_url':
       c.innerHTML = `<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:13px;color:var(--muted2);">
         🔑 With this auth type, the API key is already embedded inside each endpoint URL you enter below (e.g. <code style="font-family:'DM Mono',monospace">/xml/products/key-abc123</code>). Just enter the full URLs including the key — no separate credential fields needed.
@@ -1242,6 +1249,7 @@ function addEndpointRow(defaults = {}) {
     csv_semicolon: 'CSV (semicolon)',
     csv_pipe: 'CSV (pipe)',
     csv_tab_itscope: 'CSV (tab — ITscope)',
+    xml_post_abpl: 'XML (POST — AB.pl gateway)',
   };
   const fmtOpts = Object.keys(fmtLabels).map(f => `<option value="${f}" ${(defaults.format||'json')===f?'selected':''}>${fmtLabels[f]}</option>`).join('');
 
@@ -1335,7 +1343,7 @@ async function addSupplier() {
   } else if (authType === 'header') {
     payload.auth_header_name = document.getElementById('sup-auth-header-name')?.value.trim() || 'X-AUTH-TOKEN';
     payload.auth_key         = document.getElementById('sup-auth-key')?.value.trim() || null;
-  } else if (authType === 'query_params') {
+  } else if (authType === 'query_params' || authType === 'post_body') {
     payload.auth_username = document.getElementById('sup-auth-user')?.value.trim() || null;
     payload.auth_password = document.getElementById('sup-auth-pass')?.value || null;
     const extraRaw = document.getElementById('sup-auth-extra')?.value.trim();
@@ -2797,13 +2805,13 @@ async function openEditSupplier(id) {
     renderEditAuthFields();
 
     // Fill auth fields
-    if (s.auth_type === 'basic' || s.auth_type === 'query_params') {
+    if (s.auth_type === 'basic' || s.auth_type === 'query_params' || s.auth_type === 'post_body') {
       setTimeout(() => {
         const u = document.getElementById('edit-sup-auth-user');
         const p = document.getElementById('edit-sup-auth-pass');
         if (u) u.value = s.auth_username || '';
         if (p) p.value = s.auth_password || '';
-        if (s.auth_type === 'query_params') {
+        if (s.auth_type === 'query_params' || s.auth_type === 'post_body') {
           const ex = document.getElementById('edit-sup-auth-extra');
           if (ex) ex.value = s.auth_extra ? JSON.stringify(s.auth_extra) : '';
         }
@@ -2843,6 +2851,10 @@ function renderEditAuthFields() {
       c.innerHTML = `<div class="form-row">${inp('edit-sup-auth-user','Username','ABAYOUMI-XML')}${inp('edit-sup-auth-pass','Password','••••••••','password')}</div>
         <div style="margin-top:10px">${inp('edit-sup-auth-extra','Extra Params (JSON)','{"orgnum":"276054"}')}</div>`;
       break;
+    case 'post_body':
+      c.innerHTML = `<div class="form-row">${inp('edit-sup-auth-user','Login','a.bayoumi0')}${inp('edit-sup-auth-pass','Password','••••••••','password')}</div>
+        <div style="margin-top:10px">${inp('edit-sup-auth-extra','Extra Params (JSON) — e.g. AB.pl customer code','{"client":"40557098"}')}</div>`;
+      break;
     default: c.innerHTML = '';
   }
 }
@@ -2859,6 +2871,7 @@ function addEditEndpointRow(defaults = {}) {
     csv_semicolon: 'CSV (semicolon)',
     csv_pipe: 'CSV (pipe)',
     csv_tab_itscope: 'CSV (tab — ITscope)',
+    xml_post_abpl: 'XML (POST — AB.pl gateway)',
   };
   const fmtOpts  = Object.keys(fmtLabelsEdit).map(f => `<option value="${f}" ${(defaults.format||'json')===f?'selected':''}>${fmtLabelsEdit[f]}</option>`).join('');
   const row = document.createElement('div');
@@ -2907,10 +2920,10 @@ async function saveSupplierEdit() {
     fulfillment_model: document.getElementById('edit-sup-fulfillment')?.value || 'cross_dock',
     count_forecast_stock: document.getElementById('edit-sup-forecast-stock')?.checked || false,
   };
-  if (authType === 'basic' || authType === 'query_params') {
+  if (authType === 'basic' || authType === 'query_params' || authType === 'post_body') {
     payload.auth_username = document.getElementById('edit-sup-auth-user')?.value.trim() || null;
     payload.auth_password = document.getElementById('edit-sup-auth-pass')?.value || null;
-    if (authType === 'query_params') {
+    if (authType === 'query_params' || authType === 'post_body') {
       const ex = document.getElementById('edit-sup-auth-extra')?.value.trim();
       if (ex) { try { payload.auth_extra = JSON.parse(ex); } catch { toast('Extra Params must be valid JSON', 'error'); return; } }
     }
