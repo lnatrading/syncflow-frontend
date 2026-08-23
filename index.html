@@ -309,8 +309,8 @@
           </div>
         </div>
         <div class="card">
-          <table><thead><tr><th>SKU</th><th>Product Name</th><th>Category</th><th>EAN</th><th>Supplier</th><th>Cost</th><th>Sale Price</th><th>Stock</th><th>Status</th><th></th></tr></thead>
-          <tbody id="products-table"><tr><td colspan="10" class="loader">Loading…</td></tr></tbody></table>
+          <table><thead><tr><th>SKU</th><th>Product Name</th><th>Brand</th><th>Category</th><th>EAN</th><th>Supplier</th><th>Cost</th><th>Sale Price</th><th>Stock</th><th>Status</th><th></th></tr></thead>
+          <tbody id="products-table"><tr><td colspan="11" class="loader">Loading…</td></tr></tbody></table>
           <div class="pagination" id="products-pagination"></div>
         </div>
       </div>
@@ -1061,7 +1061,7 @@ async function loadProducts(page = 1) {
   const status     = document.getElementById('product-status-filter')?.value || '';
   const supplierId = document.getElementById('product-supplier-filter')?.value || '';
   const tbody      = document.getElementById('products-table');
-  tbody.innerHTML = '<tr><td colspan="10" class="loader"><span class="spinning">⟳</span> Loading…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="11" class="loader"><span class="spinning">⟳</span> Loading…</td></tr>';
 
   try {
     const params = new URLSearchParams({ page, limit: 50 });
@@ -1070,11 +1070,12 @@ async function loadProducts(page = 1) {
     if (supplierId) params.set('supplier_id', supplierId);
     const d = await api('/api/products?' + params);
 
-    if (!d.data.length) { tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--muted2)">No products found</td></tr>'; }
+    if (!d.data.length) { tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--muted2)">No products found</td></tr>'; }
     else tbody.innerHTML = d.data.map(p => `
       <tr style="cursor:pointer;" onclick="openProductCard(${p.id})">
         <td><span style="font-family:'DM Mono',monospace;font-size:12px;color:var(--accent)">${p.sku}</span></td>
         <td>${p.name}</td>
+        <td><span style="font-size:12px;color:var(--muted2)">${p.brand || '—'}</span></td>
         <td><span style="font-size:12px;color:var(--muted2)">${p.category || '—'}</span></td>
         <td><span style="font-family:'DM Mono',monospace;font-size:12px;color:var(--muted2)">${p.ean || '—'}</span></td>
         <td><span style="font-size:12px;color:var(--muted2)">${p.suppliers?.name || '—'}</span></td>
@@ -1087,7 +1088,7 @@ async function loadProducts(page = 1) {
 
     renderPagination(d.count, d.limit, d.page);
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--error)">${err.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--error)">${err.message}</td></tr>`;
   }
 }
 
