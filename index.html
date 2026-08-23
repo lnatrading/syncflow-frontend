@@ -1241,7 +1241,7 @@ let _epCount = 0;
 function addEndpointRow(defaults = {}) {
   _epCount++;
   const id = `ep-${_epCount}`;
-  const roles = ['products','categories','descriptions','stock','images','datasheets','attributes','variations','fast_update','other'];
+  const roles = ['products','categories','manufacturers','descriptions','stock','images','datasheets','attributes','variations','fast_update','other'];
   const roleOpts = roles.map(r => `<option value="${r}" ${defaults.role===r?'selected':''}>${r}</option>`).join('');
   const fmtLabels = {
     json: 'JSON',
@@ -2863,7 +2863,7 @@ function renderEditAuthFields() {
 function addEditEndpointRow(defaults = {}) {
   _editEpCount++;
   const id = `edit-ep-${_editEpCount}`;
-  const roles = ['products','categories','descriptions','stock','images','datasheets','attributes','variations','fast_update','other'];
+  const roles = ['products','categories','manufacturers','descriptions','stock','images','datasheets','attributes','variations','fast_update','other'];
   const roleOpts = roles.map(r => `<option value="${r}" ${(defaults.role||'products')===r?'selected':''}>${r}</option>`).join('');
   const fmtLabelsEdit = {
     json: 'JSON',
